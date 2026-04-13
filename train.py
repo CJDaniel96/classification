@@ -30,6 +30,7 @@ except ImportError:
 
 try:
     from tqdm import tqdm
+    from tqdm.contrib.logging import logging_redirect_tqdm
 except ImportError:
     sys.exit("❌  請先安裝 tqdm：pip install tqdm")
 
@@ -204,10 +205,12 @@ def build_dataloaders(
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True,
         num_workers=num_workers, pin_memory=True, drop_last=True,
+        persistent_workers=(num_workers > 0),
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=True,
+        persistent_workers=(num_workers > 0),
     )
     return train_loader, val_loader, num_classes
 
@@ -289,11 +292,13 @@ def run_epoch(
         desc=f"  Epoch [{epoch+1:>{len(str(num_epochs))}}/{num_epochs}] {phase_tag}",
         unit="batch",
         dynamic_ncols=True,
-        leave=False,
+        leave=True,
+        mininterval=0.1,
+        miniters=1,
     )
 
     ctx = torch.enable_grad() if is_train else torch.no_grad()
-    with ctx:
+    with logging_redirect_tqdm(), ctx:
         for imgs, labels in pbar:
             imgs, labels = imgs.to(device, non_blocking=True), labels.to(device, non_blocking=True)
             with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda")):
@@ -375,8 +380,10 @@ def train(args):
     log.info(f"  📂  Run dir: {out_dir}")
 
     # ── num_classes（快速掃描，供建立模型使用）──
-    num_classes = len(datasets.ImageFolder(args.data_dir).classes)
-    log.info(f"  📁  Dataset: {args.data_dir}，共 {num_classes} 類別")
+    _tmp_ds = datasets.ImageFolder(args.data_dir)
+    num_classes = len(_tmp_ds.classes)
+    class_names = _tmp_ds.classes
+    log.info(f"  📁  Dataset: {args.data_dir}，共 {num_classes} 類別: {class_names}")
 
     # ── model ──
     timm_name = resolve_model_name(args.model)
@@ -509,6 +516,7 @@ def train(args):
                 "scheduler_state": scheduler.state_dict() if not plateau_mode else {},
                 "best_val":        best_val_loss,
                 "args":            vars(args),
+                "class_names":     class_names,
             },
             ckpt_dir,
             is_best,
