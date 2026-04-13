@@ -21,6 +21,7 @@ python inference.py yolo --checkpoint best.pth --image-dir images/ --label-dir l
 import sys
 import csv
 import json
+import math
 import logging
 import argparse
 from pathlib import Path
@@ -28,7 +29,7 @@ from typing import List, Optional, Tuple, Dict
 
 import torch
 import torch.nn as nn
-from PIL import Image
+from PIL import Image, ImageOps
 from torchvision import transforms
 
 try:
@@ -176,6 +177,49 @@ def build_transform(img_size: int) -> transforms.Compose:
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
     ])
+
+
+# ──────────────────────────────────────────────
+# VOC-style preprocessing（與 voc_to_cls.py 一致）
+# 用於 yolo 模式，確保推論時的前處理與訓練資料一致
+# ──────────────────────────────────────────────
+def expand_bbox(
+    xmin: int, ymin: int, xmax: int, ymax: int,
+    img_w: int, img_h: int,
+    expand_ratio: float,
+) -> Tuple[int, int, int, int]:
+    """將 bbox 以中心點為基準向外擴展 expand_ratio 倍，並 clamp 至圖片邊界。"""
+    cx = (xmin + xmax) / 2.0
+    cy = (ymin + ymax) / 2.0
+    new_w = (xmax - xmin) * expand_ratio
+    new_h = (ymax - ymin) * expand_ratio
+    new_xmin = max(0, int(math.floor(cx - new_w / 2.0)))
+    new_ymin = max(0, int(math.floor(cy - new_h / 2.0)))
+    new_xmax = min(img_w, int(math.ceil(cx + new_w / 2.0)))
+    new_ymax = min(img_h, int(math.ceil(cy + new_h / 2.0)))
+    return new_xmin, new_ymin, new_xmax, new_ymax
+
+
+def resize_longest_side_and_pad(
+    image: Image.Image,
+    target_size: int,
+    pad_color: Tuple[int, int, int] = (0, 0, 0),
+) -> Image.Image:
+    """保持長寬比，將最長邊縮放至 target_size，再以 pad_color 填充為正方形。"""
+    w, h = image.size
+    scale = target_size / max(w, h)
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    resized = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    pad_left   = (target_size - new_w) // 2
+    pad_top    = (target_size - new_h) // 2
+    pad_right  = target_size - new_w - pad_left
+    pad_bottom = target_size - new_h - pad_top
+    return ImageOps.expand(
+        resized,
+        border=(pad_left, pad_top, pad_right, pad_bottom),
+        fill=pad_color,
+    )
 
 
 # ──────────────────────────────────────────────
@@ -339,7 +383,16 @@ def run_yolo(args):
                 continue
 
             for det_idx, (yolo_cls, x1, y1, x2, y2) in enumerate(boxes):
-                crop = image.crop((x1, y1, x2, y2))
+                # ── 與 voc_to_cls.py 相同的前處理：expand → crop → resize+pad ──
+                ex1, ey1, ex2, ey2 = expand_bbox(
+                    x1, y1, x2, y2, img_w, img_h, args.expand_ratio
+                )
+                crop = image.crop((ex1, ey1, ex2, ey2))
+                crop = resize_longest_side_and_pad(
+                    crop,
+                    target_size=img_size,
+                    pad_color=tuple(args.pad_color),
+                )
 
                 if save_dir:
                     crop_name = f"{img_path.stem}_det{det_idx:03d}.jpg"
@@ -439,12 +492,17 @@ def parse_args():
     # ── yolo ──
     py = sub.add_parser("yolo", parents=[common],
                         help="讀取 YOLO 偵測 txt，crop 後分類")
-    py.add_argument("--image-dir",   required=True, help="圖片資料夾")
-    py.add_argument("--label-dir",   required=True,
+    py.add_argument("--image-dir",    required=True, help="圖片資料夾")
+    py.add_argument("--label-dir",    required=True,
                     help="YOLO txt 標籤資料夾（與圖片同名，副檔名 .txt）")
-    py.add_argument("--output-csv",  default=None,  help="結果輸出 CSV 路徑")
-    py.add_argument("--save-crops",  default=None,
-                    help="若指定，將每個 crop 影像儲存到此目錄")
+    py.add_argument("--output-csv",   default=None,  help="結果輸出 CSV 路徑")
+    py.add_argument("--save-crops",   default=None,
+                    help="若指定，將每個前處理後的 crop 影像儲存到此目錄")
+    py.add_argument("--expand-ratio", type=float, default=1.25,
+                    help="BBox 擴展比例，須與 voc_to_cls.py 訓練時一致（預設 1.25）")
+    py.add_argument("--pad-color",    nargs=3, type=int, default=[0, 0, 0],
+                    metavar=("R", "G", "B"),
+                    help="Padding 顏色，須與 voc_to_cls.py 訓練時一致（預設 0 0 0）")
 
     return p.parse_args()
 
