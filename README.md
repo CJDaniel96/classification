@@ -5,7 +5,7 @@ PyTorch 影像分類工具包，涵蓋資料前處理、模型訓練到推論的
 ## 功能特色
 
 - **資料前處理**：從 Pascal VOC 標注自動裁切 ROI，產生分類資料集
-- **模型訓練**：支援 MobileNetV3、EfficientNetV2、EfficientViT、ConvNeXt、ResNet（透過 timm）
+- **模型訓練**：支援 MobileNetV3、EfficientNetV2、EfficientViT、ConvNeXt、ConvNeXt V2-Tiny、ResNet（透過 timm）
 - **推論**：支援單張圖片、資料夾批次、搭配 YOLO 偵測框三種模式
 
 ---
@@ -93,6 +93,19 @@ python train.py \
     --output-dir runs
 ```
 
+**使用 ConvNeXt V2-Tiny 訓練**
+
+```bash
+python train.py \
+    --data-dir  /path/to/dataset \
+    --model     convnextv2_tiny \
+    --epochs    100 \
+    --output-dir runs
+```
+
+預設載入 timm 的預訓練權重；若要從隨機初始化開始訓練，可加上 `--no-pretrain`。
+也接受 `ConvNeXt-V2-Tiny` 寫法，訓練產生的 checkpoint 可直接供 `inference.py` 使用。
+
 **常用參數**
 
 | 參數 | 預設值 | 說明 |
@@ -125,6 +138,7 @@ python train.py \
 | `efficientvit_m0` ~ `efficientvit_m5` | `efficientvit_m0` ~ `m5` |
 | `convnext` / `convnext_tiny` | `convnext_tiny` |
 | `convnext_small` / `convnext_base` | `convnext_small/base` |
+| `convnextv2` / `convnextv2_tiny` / `convnext_v2` / `convnext_v2_tiny` | `convnextv2_tiny` |
 | `resnet` / `resnet50` | `resnet50` |
 | `resnet18` / `resnet34` / `resnet101` / `resnet152` | 對應 ResNet |
 

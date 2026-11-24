@@ -1,7 +1,7 @@
 """
 train.py — PyTorch Image Classification Trainer
 ================================================
-Supports: MobileNetV3, EfficientNetV2, ConvNeXt-Tiny, ResNet (via timm)
+Supports: MobileNetV3, EfficientNetV2, EfficientViT, ConvNeXt, ConvNeXt V2-Tiny, ResNet (via timm)
 Features: TensorBoard, Checkpoint, Early Stopping, LR Scheduler
 """
 
@@ -70,6 +70,11 @@ MODEL_ALIASES: Dict[str, str] = {
     "convnext_tiny":         "convnext_tiny",
     "convnext_small":        "convnext_small",
     "convnext_base":         "convnext_base",
+    # ConvNeXt V2
+    "convnextv2":            "convnextv2_tiny",
+    "convnextv2_tiny":       "convnextv2_tiny",
+    "convnext_v2":           "convnextv2_tiny",
+    "convnext_v2_tiny":      "convnextv2_tiny",
     # ResNet
     "resnet":                "resnet50",
     "resnet18":              "resnet18",
